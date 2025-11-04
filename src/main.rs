@@ -1,109 +1,52 @@
-use std::{
-    io::{self, Write, stdout},
-    time::Duration,
-};
-
-use crate::timer::Timer;
-
+mod app;
 mod timer;
 
-/*
-use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture},
-    execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
-};
-use std::{
-    io, thread,
-    time::{Duration, Instant, SystemTime},
-};
-use tui::{
-    Frame, Terminal,
-    backend::{Backend, CrosstermBackend},
-    layout::{Constraint, Direction, Layout},
-    widgets::{Block, Borders},
-};
+use std::{sync::mpsc, thread};
 
-fn ui<B: Backend>(frame: &mut Frame<B>) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .margin(1)
-        .constraints(
-            [
-                Constraint::Percentage(10),
-                Constraint::Percentage(80),
-                Constraint::Percentage(10),
-            ]
-            .as_ref(),
-        )
-        .split(frame.size());
-    let block = Block::default().title("Block 1").borders(Borders::ALL);
-    frame.render_widget(block, chunks[0]);
-    let block = Block::default().title("Block 2").borders(Borders::ALL);
-    frame.render_widget(block, chunks[1]);
-    let block = Block::default().title("Block 3").borders(Borders::ALL);
-    frame.render_widget(block, chunks[2]);
+use app::{App, Event, TimerCommand};
+use color_eyre::eyre::Result;
+use crossterm::event;
+use timer::Timer;
+
+fn main() -> Result<()> {
+    color_eyre::install()?;
+    let mut terminal = ratatui::init();
+
+    let (event_tx, event_rx) = mpsc::channel::<Event>();
+    let tx_input_events = event_tx.clone();
+    let tx_timer_progress = event_tx.clone();
+
+    let (timer_event_tx, timer_event_rx) = mpsc::channel::<TimerCommand>();
+
+    let mut app = App::new();
+
+    thread::spawn(move || handle_input_events(tx_input_events));
+    thread::spawn(move || timer_worker(timer_event_rx, tx_timer_progress));
+
+    let app_result = app.run(&mut terminal, event_rx, timer_event_tx);
+
+    ratatui::restore();
+
+    app_result
 }
-*/
 
-#[tokio::main]
-async fn main() {
-    /*
-        enable_raw_mode()?;
-        let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-        let backend = CrosstermBackend::new(stdout);
-        let mut terminal = Terminal::new(backend)?;
-
-        terminal.draw(|f| {
-            ui(f);
-        })?;
-
-        let current_time = Instant::now();
-        let tick_rate = Duration::from_millis(200);
-
-        thread::sleep(Duration::from_millis(1000));
-
-
-
-        disable_raw_mode()?;
-        execute!(
-            terminal.backend_mut(),
-            LeaveAlternateScreen,
-            DisableMouseCapture
-        )?;
-        terminal.show_cursor()?;
-
-        if current_time.elapsed() >= tick_rate {
-            print!("{}", current_time.elapsed().as_secs_f64());
+fn handle_input_events(tx: mpsc::Sender<Event>) {
+    loop {
+        match event::read().unwrap() {
+            event::Event::Key(key_event) => tx.send(Event::Input(key_event)).unwrap(),
+            _ => {}
         }
-    */
-    println!("Countdown Timer is starting...");
-    println!("Please enter countdown name:");
-    stdout().flush().unwrap();
+    }
+}
 
-    let mut name = String::new();
-    io::stdin()
-        .read_line(&mut name)
-        .expect("Failed to read name");
-
-    println!("Please enter countdown start:");
-    stdout().flush().unwrap();
-    let mut start_input = String::new();
-    io::stdin()
-        .read_line(&mut start_input)
-        .expect("Failed to read start");
-
-    let start: u64 = match start_input.trim().parse() {
-        Ok(num) => num,
-        Err(_) => {
-            println!("Please enter a valid integer.");
-            return;
+fn timer_worker(rx: mpsc::Receiver<TimerCommand>, tx: mpsc::Sender<Event>) {
+    while let Ok(cmd) = rx.recv() {
+        match cmd {
+            TimerCommand::Phase(phase) => {
+                let mut timer = Timer::new(phase.name, phase.duration, phase.unit);
+                timer.run(tx.clone());
+                tx.send(Event::TimerDone(true)).unwrap();
+            }
         }
-    };
-
-    let mut timer = Timer::new(name.trim().to_string(), start, timer::TimeUnit::MINUTES);
-    println!("Timer: {:?}", timer);
-
-    timer.start().await;
+    }
 }
