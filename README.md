@@ -1,6 +1,6 @@
-# Tomidoro
+# Tomodoro
 
-Tomidoro is a simple Pomodoro-style countdown timer that runs entirely in the terminal.
+Tomodoro is a simple Pomodoro-style countdown timer that runs entirely in the terminal.
 It uses [ratatui](https://github.com/ratatui-org/ratatui) for the UI layer and pairs a
 background timer worker with a responsive TUI to show progress, phase information, and
 shortcut hints.
