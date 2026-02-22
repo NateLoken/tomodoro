@@ -1,9 +1,10 @@
 mod app;
 mod config;
+mod notify;
 mod timer;
 
 use std::{
-    process::Command,
+    env,
     sync::mpsc,
     thread,
     time::{Duration, Instant},
@@ -14,7 +15,10 @@ use color_eyre::eyre::Result;
 use crossterm::event::{self, Event as CrosstermEvent};
 use timer::TimerCommand;
 
-use crate::timer::{TimerEngine, TimerEvent, TimerSnapshot};
+use crate::{
+    notify::{NotifyConfig, notif_phase_complete},
+    timer::{TimerEngine, TimerEvent},
+};
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -56,6 +60,16 @@ fn handle_input_events(tx: mpsc::Sender<Event>) {
 fn timer_worker(rx: mpsc::Receiver<TimerCommand>, tx: mpsc::Sender<Event>) {
     let mut engine = TimerEngine::default();
     let tick_rate = Duration::from_millis(50);
+
+    let notif_sound =
+        Some(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("hangover-sound.ogg"));
+
+    let notif_config = NotifyConfig {
+        name: "Tomodoro".to_string(),
+        file: notif_sound,
+        volume: 0.5,
+    };
+
     loop {
         match rx.recv_timeout(tick_rate) {
             Ok(cmd) => match cmd {
@@ -81,7 +95,7 @@ fn timer_worker(rx: mpsc::Receiver<TimerCommand>, tx: mpsc::Sender<Event>) {
                 }
                 TimerCommand::Skip => {
                     if let Some(snap) = engine.skip() {
-                        notify_phase_finished(&snap);
+                        notif_phase_complete(&snap.name, &notif_config);
 
                         if tx.send(Event::Timer(TimerEvent::Completed(snap))).is_err() {
                             break;
@@ -98,7 +112,7 @@ fn timer_worker(rx: mpsc::Receiver<TimerCommand>, tx: mpsc::Sender<Event>) {
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 if let Some(timer_event) = engine.tick(Instant::now()) {
                     if let TimerEvent::Completed(snap) = &timer_event {
-                        notify_phase_finished(snap);
+                        notif_phase_complete(&snap.name, &notif_config);
                     }
 
                     if tx.send(Event::Timer(timer_event)).is_err() {
@@ -109,16 +123,4 @@ fn timer_worker(rx: mpsc::Receiver<TimerCommand>, tx: mpsc::Sender<Event>) {
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
-}
-
-fn notify_phase_finished(snapshot: &TimerSnapshot) {
-    let title = "Finished";
-    let body = format!("{}ing", snapshot.name);
-
-    let _ = Command::new("notify-send")
-        .arg("-a")
-        .arg("Tomidoro")
-        .arg(title)
-        .arg(body)
-        .status();
 }

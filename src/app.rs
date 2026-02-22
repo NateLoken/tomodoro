@@ -54,7 +54,7 @@ impl App {
             return Err(eyre!("config loaded but contains no phases"));
         }
 
-        let mut phase_index: usize = config.phases.len() - 1;
+        let mut phase_index: usize = 0;
 
         self.apply_phase(&config.phases[phase_index]);
         timer_tx.send(TimerCommand::Start(config.phases[phase_index].to_spec()))?;

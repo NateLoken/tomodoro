@@ -70,3 +70,5 @@ defaults as a fallback:
 ## License
 
 MIT © 2024 Tomidoro contributors.
+
+Sounds from [Notification Sounds](https://notificationsounds.com/).
