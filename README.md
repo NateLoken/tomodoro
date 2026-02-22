@@ -10,7 +10,7 @@ shortcut hints.
 - Alternates automatically between “Work” and “Rest” phases.
 - Live progress gauge with colours that reflect the current phase.
 - Displays phase name plus elapsed/remaining time in `MM:SS` format.
-- Keyboard shortcuts for quitting (and ready for extending with pause/resume).
+- Keyboard shortcuts for pause/resume, skipping phases, quitting.
 
 ## Requirements
 
