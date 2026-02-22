@@ -178,8 +178,7 @@ impl Widget for &App {
     where
         Self: Sized,
     {
-        let vertical_layout =
-            Layout::vertical([Constraint::Percentage(10), Constraint::Percentage(90)]);
+        let vertical_layout = Layout::vertical([Constraint::Length(5), Constraint::Min(3)]);
         let [title_area, gauge_area] = vertical_layout.areas(area);
 
         let timer_block = Block::bordered()
@@ -188,15 +187,18 @@ impl Widget for &App {
 
         let state_label = if self.paused { "Paused" } else { "Running" };
 
+        let elapsed = App::format_time(self.total_secs - self.remaining_secs);
+        let total = App::format_time(self.total_secs);
+        let time_line = if title_area.width < 24 {
+            format!("{elapsed}/{total}")
+        } else {
+            format!("Time: {elapsed} / {total}")
+        };
+
         let overview = Paragraph::new(vec![
             Line::from(format!("Phase: {}", self.phase_name)).centered(),
             Line::from(format!("State: {}", state_label)).centered(),
-            Line::from(format!(
-                "Time: {} / {}",
-                App::format_time(self.total_secs - self.remaining_secs),
-                App::format_time(self.total_secs)
-            ))
-            .centered(),
+            Line::from(time_line).centered(),
         ])
         .block(timer_block);
 
