@@ -1,0 +1,12 @@
+[[ phases ]]
+name = "Focus"
+duration = 25.0
+unit = "Minutes"
+color = "Red"
+
+[[ phases ]]
+name = "Rest"
+duration = 5.0
+unit = "Minutes"
+color = "Blue"
+

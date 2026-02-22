@@ -1,6 +1,8 @@
 use std::time::Instant;
 
-#[derive(Debug, Clone, Copy)]
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Copy, Deserialize)]
 pub enum TimeUnit {
     Seconds,
     Minutes,

@@ -1,7 +1,9 @@
 mod app;
+mod config;
 mod timer;
 
 use std::{
+    process::Command,
     sync::mpsc,
     thread,
     time::{Duration, Instant},
@@ -12,7 +14,7 @@ use color_eyre::eyre::Result;
 use crossterm::event::{self, Event as CrosstermEvent};
 use timer::TimerCommand;
 
-use crate::timer::{TimerEngine, TimerEvent};
+use crate::timer::{TimerEngine, TimerEvent, TimerSnapshot};
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -78,10 +80,12 @@ fn timer_worker(rx: mpsc::Receiver<TimerCommand>, tx: mpsc::Sender<Event>) {
                     }
                 }
                 TimerCommand::Skip => {
-                    if let Some(snap) = engine.skip()
-                        && tx.send(Event::Timer(TimerEvent::Completed(snap))).is_err()
-                    {
-                        break;
+                    if let Some(snap) = engine.skip() {
+                        notify_phase_finished(&snap);
+
+                        if tx.send(Event::Timer(TimerEvent::Completed(snap))).is_err() {
+                            break;
+                        }
                     }
                 }
                 TimerCommand::Stop => {
@@ -92,13 +96,29 @@ fn timer_worker(rx: mpsc::Receiver<TimerCommand>, tx: mpsc::Sender<Event>) {
                 }
             },
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                if let Some(timer_event) = engine.tick(Instant::now())
-                    && tx.send(Event::Timer(timer_event)).is_err()
-                {
-                    break;
+                if let Some(timer_event) = engine.tick(Instant::now()) {
+                    if let TimerEvent::Completed(snap) = &timer_event {
+                        notify_phase_finished(snap);
+                    }
+
+                    if tx.send(Event::Timer(timer_event)).is_err() {
+                        break;
+                    }
                 }
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
+}
+
+fn notify_phase_finished(snapshot: &TimerSnapshot) {
+    let title = "Finished";
+    let body = format!("{}ing", snapshot.name);
+
+    let _ = Command::new("notify-send")
+        .arg("-a")
+        .arg("Tomidoro")
+        .arg(title)
+        .arg(body)
+        .status();
 }

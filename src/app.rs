@@ -1,6 +1,6 @@
 use std::sync::mpsc;
 
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{Result, eyre};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     DefaultTerminal, Frame,
@@ -11,25 +11,8 @@ use ratatui::{
     widgets::{Block, Gauge, Paragraph, Widget},
 };
 
-use crate::timer::{PhaseSpec, TimeUnit, TimerCommand, TimerEvent, TimerSnapshot};
-
-#[derive(Debug, Clone)]
-pub struct PhasePreset {
-    pub name: String,
-    pub duration: f64,
-    pub unit: TimeUnit,
-    pub color: Color,
-}
-
-impl PhasePreset {
-    pub fn total_seconds(&self) -> f64 {
-        self.unit.to_seconds(self.duration)
-    }
-
-    pub fn to_spec(&self) -> PhaseSpec {
-        PhaseSpec::new(self.name.clone(), self.duration, self.unit)
-    }
-}
+use crate::config::{PhaseConfig, PhasePreset};
+use crate::timer::{TimerCommand, TimerEvent, TimerSnapshot};
 
 pub enum Event {
     Input(KeyEvent),
@@ -65,24 +48,16 @@ impl App {
         rx: mpsc::Receiver<Event>,
         timer_tx: mpsc::Sender<TimerCommand>,
     ) -> Result<()> {
-        let mut phase_index: usize = 0;
-        let phases = vec![
-            PhasePreset {
-                name: String::from("Work"),
-                duration: 25.0,
-                unit: TimeUnit::Minutes,
-                color: Color::Red,
-            },
-            PhasePreset {
-                name: String::from("Rest"),
-                duration: 5.0,
-                unit: TimeUnit::Minutes,
-                color: Color::Blue,
-            },
-        ];
+        let config = PhaseConfig::new()?;
 
-        self.apply_phase(&phases[phase_index]);
-        let _ = timer_tx.send(TimerCommand::Start(phases[phase_index].to_spec()));
+        if config.phases.is_empty() {
+            return Err(eyre!("config loaded but contains no phases"));
+        }
+
+        let mut phase_index: usize = config.phases.len() - 1;
+
+        self.apply_phase(&config.phases[phase_index]);
+        timer_tx.send(TimerCommand::Start(config.phases[phase_index].to_spec()))?;
 
         while !self.exit {
             let event = match rx.recv() {
@@ -93,11 +68,16 @@ impl App {
             match event {
                 Event::Input(key_event) => {
                     if let Some(cmd) = self.handle_key_event(key_event) {
-                        let _ = timer_tx.send(cmd);
+                        timer_tx.send(cmd)?;
                     }
                 }
                 Event::Timer(timer_event) => {
-                    self.handle_timer_event(timer_event, &timer_tx, &phases, &mut phase_index);
+                    self.handle_timer_event(
+                        timer_event,
+                        &timer_tx,
+                        &config.phases,
+                        &mut phase_index,
+                    )?;
                 }
             }
 
@@ -129,10 +109,6 @@ impl App {
                     Some(TimerCommand::Resume)
                 }
             }
-            KeyCode::Char('r') => {
-                self.paused = false;
-                Some(TimerCommand::Resume)
-            }
             KeyCode::Char('n') => Some(TimerCommand::Skip),
             _ => None,
         }
@@ -144,12 +120,12 @@ impl App {
         timer_tx: &mpsc::Sender<TimerCommand>,
         phases: &[PhasePreset],
         phase_index: &mut usize,
-    ) {
+    ) -> Result<()> {
         match event {
             TimerEvent::Tick(snapshot) => self.apply_snapshot(&snapshot),
             TimerEvent::Completed(snapshot) => {
                 self.apply_snapshot(&snapshot);
-                self.start_new_timer(timer_tx, phases, phase_index);
+                self.start_new_timer(timer_tx, phases, phase_index)?;
             }
             TimerEvent::Stopped => {
                 self.paused = false;
@@ -157,6 +133,8 @@ impl App {
                 self.remaining_secs = 0.0;
             }
         }
+
+        Ok(())
     }
 
     fn start_new_timer(
@@ -164,10 +142,12 @@ impl App {
         tx: &mpsc::Sender<TimerCommand>,
         phases: &[PhasePreset],
         phase_index: &mut usize,
-    ) {
+    ) -> Result<()> {
         *phase_index = (*phase_index + 1) % phases.len();
         self.apply_phase(&phases[*phase_index]);
-        let _ = tx.send(TimerCommand::Start(phases[*phase_index].to_spec()));
+        tx.send(TimerCommand::Start(phases[*phase_index].to_spec()))?;
+
+        Ok(())
     }
 
     fn apply_phase(&mut self, phase: &PhasePreset) {
@@ -204,7 +184,6 @@ impl Widget for &App {
 
         let timer_block = Block::bordered()
             .title(Line::from("Timer Overview").centered())
-            .border_set(border::THICK)
             .border_set(border::ROUNDED);
 
         let state_label = if self.paused { "Paused" } else { "Running" };
@@ -226,8 +205,6 @@ impl Widget for &App {
         let instructions = Line::from(vec![
             " Pause/Resume ".into(),
             "<Space>".white().bold(),
-            " Resume ".into(),
-            "<R>".white().bold(),
             " Next ".into(),
             "<N>".white().bold(),
             " Quit ".into(),
@@ -236,9 +213,8 @@ impl Widget for &App {
         .centered();
 
         let block = Block::bordered()
-            .title(Line::from(" Timer Progess ").centered())
+            .title(Line::from(" Timer Progress ").centered())
             .title_bottom(instructions)
-            .border_set(border::THICK)
             .border_set(border::ROUNDED);
 
         let gauge_ratio = if self.timer_progress >= 1.0 {
