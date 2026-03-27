@@ -11,7 +11,7 @@ use ratatui::{
     widgets::{Block, Gauge, Paragraph, Widget},
 };
 
-use crate::config::{PhaseConfig, PhasePreset};
+use crate::config::PhasePreset;
 use crate::timer::{TimerCommand, TimerEvent, TimerSnapshot};
 
 pub enum Event {
@@ -47,17 +47,16 @@ impl App {
         terminal: &mut DefaultTerminal,
         rx: mpsc::Receiver<Event>,
         timer_tx: mpsc::Sender<TimerCommand>,
+        phases: &[PhasePreset],
     ) -> Result<()> {
-        let config = PhaseConfig::new()?;
-
-        if config.phases.is_empty() {
-            return Err(eyre!("config loaded but contains no phases"));
+        if phases.is_empty() {
+            return Err(eyre!("phase configuration contains no phases"));
         }
 
         let mut phase_index: usize = 0;
 
-        self.apply_phase(&config.phases[phase_index]);
-        timer_tx.send(TimerCommand::Start(config.phases[phase_index].to_spec()))?;
+        self.apply_phase(&phases[phase_index]);
+        timer_tx.send(TimerCommand::Start(phases[phase_index].to_spec()))?;
 
         while !self.exit {
             let event = match rx.recv() {
@@ -72,12 +71,7 @@ impl App {
                     }
                 }
                 Event::Timer(timer_event) => {
-                    self.handle_timer_event(
-                        timer_event,
-                        &timer_tx,
-                        &config.phases,
-                        &mut phase_index,
-                    )?;
+                    self.handle_timer_event(timer_event, &timer_tx, phases, &mut phase_index)?;
                 }
             }
 

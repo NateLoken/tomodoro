@@ -21,7 +21,7 @@ pub struct PhasePreset {
 }
 
 impl PhaseConfig {
-    pub fn new() -> Result<Self> {
+    pub fn new() -> Result<(Self, Option<String>)> {
         let mut config_path = env::current_dir()?;
         config_path.push("config.toml");
 
@@ -46,9 +46,38 @@ color = "Blue"
             Err(err) => return Err(err.into()),
         };
 
-        let config: Self = toml::from_str(&config_str)?;
+        let (config, warning): (Self, Option<String>) = match toml::from_str(&config_str) {
+            Ok(cfg) => (cfg, None),
+            Err(parse_error) => {
+                let warning = format!(
+                    "warning: failed to parse {}.\n{}\nusing built-in default phases.",
+                    config_path.display(),
+                    parse_error
+                );
+                (PhaseConfig::default(), Some(warning))
+            }
+        };
 
-        Ok(config)
+        Ok((config, warning))
+    }
+
+    fn default() -> Self {
+        Self {
+            phases: vec![
+                PhasePreset {
+                    name: "Focus".to_string(),
+                    duration: 25.0,
+                    unit: TimeUnit::Minutes,
+                    color: Color::Red,
+                },
+                PhasePreset {
+                    name: "Rest".to_string(),
+                    duration: 5.0,
+                    unit: TimeUnit::Minutes,
+                    color: Color::Blue,
+                },
+            ],
+        }
     }
 }
 

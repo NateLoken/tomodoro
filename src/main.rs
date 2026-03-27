@@ -16,12 +16,19 @@ use crossterm::event::{self, Event as CrosstermEvent};
 use timer::TimerCommand;
 
 use crate::{
+    config::PhaseConfig,
     notify::{NotifyConfig, notif_phase_complete},
     timer::{TimerEngine, TimerEvent},
 };
 
 fn main() -> Result<()> {
     color_eyre::install()?;
+    let (config, warning) = PhaseConfig::new()?;
+
+    if let Some(warning) = warning {
+        eprintln!("{warning}");
+    }
+
     let mut terminal = ratatui::init();
 
     let (app_evt_tx, app_evt_rx) = mpsc::channel::<Event>();
@@ -36,7 +43,7 @@ fn main() -> Result<()> {
     thread::spawn(move || handle_input_events(tx_input_events));
     thread::spawn(move || timer_worker(timer_cmd_rx, tx_timer_events));
 
-    let app_result = app.run(&mut terminal, app_evt_rx, timer_cmd_tx);
+    let app_result = app.run(&mut terminal, app_evt_rx, timer_cmd_tx, &config.phases);
 
     ratatui::restore();
 
