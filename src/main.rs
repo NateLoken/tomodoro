@@ -1,7 +1,10 @@
 mod app;
+mod config;
+mod notify;
 mod timer;
 
 use std::{
+    env,
     sync::mpsc,
     thread,
     time::{Duration, Instant},
@@ -12,10 +15,20 @@ use color_eyre::eyre::Result;
 use crossterm::event::{self, Event as CrosstermEvent};
 use timer::TimerCommand;
 
-use crate::timer::{TimerEngine, TimerEvent};
+use crate::{
+    config::PhaseConfig,
+    notify::{NotifyConfig, notif_phase_complete},
+    timer::{TimerEngine, TimerEvent},
+};
 
 fn main() -> Result<()> {
     color_eyre::install()?;
+    let (config, warning) = PhaseConfig::new()?;
+
+    if let Some(warning) = warning {
+        eprintln!("{warning}");
+    }
+
     let mut terminal = ratatui::init();
 
     let (app_evt_tx, app_evt_rx) = mpsc::channel::<Event>();
@@ -30,7 +43,7 @@ fn main() -> Result<()> {
     thread::spawn(move || handle_input_events(tx_input_events));
     thread::spawn(move || timer_worker(timer_cmd_rx, tx_timer_events));
 
-    let app_result = app.run(&mut terminal, app_evt_rx, timer_cmd_tx);
+    let app_result = app.run(&mut terminal, app_evt_rx, timer_cmd_tx, &config.phases);
 
     ratatui::restore();
 
@@ -54,6 +67,16 @@ fn handle_input_events(tx: mpsc::Sender<Event>) {
 fn timer_worker(rx: mpsc::Receiver<TimerCommand>, tx: mpsc::Sender<Event>) {
     let mut engine = TimerEngine::default();
     let tick_rate = Duration::from_millis(50);
+
+    let notif_sound =
+        Some(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("hangover-sound.ogg"));
+
+    let notif_config = NotifyConfig {
+        name: "Tomodoro".to_string(),
+        file: notif_sound,
+        volume: 0.5,
+    };
+
     loop {
         match rx.recv_timeout(tick_rate) {
             Ok(cmd) => match cmd {
@@ -78,10 +101,12 @@ fn timer_worker(rx: mpsc::Receiver<TimerCommand>, tx: mpsc::Sender<Event>) {
                     }
                 }
                 TimerCommand::Skip => {
-                    if let Some(snap) = engine.skip()
-                        && tx.send(Event::Timer(TimerEvent::Completed(snap))).is_err()
-                    {
-                        break;
+                    if let Some(snap) = engine.skip() {
+                        notif_phase_complete(&snap.name, &notif_config);
+
+                        if tx.send(Event::Timer(TimerEvent::Completed(snap))).is_err() {
+                            break;
+                        }
                     }
                 }
                 TimerCommand::Stop => {
@@ -92,10 +117,14 @@ fn timer_worker(rx: mpsc::Receiver<TimerCommand>, tx: mpsc::Sender<Event>) {
                 }
             },
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                if let Some(timer_event) = engine.tick(Instant::now())
-                    && tx.send(Event::Timer(timer_event)).is_err()
-                {
-                    break;
+                if let Some(timer_event) = engine.tick(Instant::now()) {
+                    if let TimerEvent::Completed(snap) = &timer_event {
+                        notif_phase_complete(&snap.name, &notif_config);
+                    }
+
+                    if tx.send(Event::Timer(timer_event)).is_err() {
+                        break;
+                    }
                 }
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => break,

@@ -25,8 +25,8 @@ cd tomidoro
 cargo run
 ```
 
-The app launches in the terminal, prompts for the phase durations, and immediately
-starts the first cycle. Press `q` at any time to exit.
+The app launches in the terminal and starts the first phase immediately. Press `q` at
+any time to exit.
 
 ## Project Structure
 
@@ -34,12 +34,40 @@ starts the first cycle. Press `q` at any time to exit.
 - `src/app.rs` – manages UI state, phase cycling, and drawing code.
 - `src/timer.rs` – background timer that sends progress events to the UI.
 
-## Customisation
+## Configuration (`config.toml`)
 
-Adjust the default phase durations or colours in `src/app.rs` (see the `phases` vector).
-To add more complex behaviour (pauses, configuration, notifications), hook additional
-commands/events into the existing channels.
+Tomodoro reads phase settings from `config.toml` in the current working directory.
+
+- If `config.toml` is missing, Tomodoro writes a starter file with default phases.
+- If `config.toml` exists but cannot be parsed, Tomodoro prints a warning and falls
+  back to built-in defaults.
+
+Example `config.toml`:
+
+```toml
+[[ phases ]]
+name = "Focus"
+duration = 25.0
+unit = "Minutes"
+color = "Red"
+
+[[ phases ]]
+name = "Rest"
+duration = 5.0
+unit = "Minutes"
+color = "Blue"
+```
+
+Field reference:
+
+- `name` (string): label shown in the UI.
+- `duration` (number): phase length for the selected unit.
+- `unit` (string): `Seconds`, `Minutes`, or `Hours`.
+- `color` (string): a `ratatui` color name like `Red`, `Blue`, `Green`, `Yellow`,
+  or `Cyan`.
 
 ## License
 
 MIT © 2024 Tomidoro contributors.
+
+Sounds from [Notification Sounds](https://notificationsounds.com/).
